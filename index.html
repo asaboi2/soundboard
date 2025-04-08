@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D&D Audio Trigger POC v6 (Self-Crossfading Loops)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>D&D Audio Trigger POC v6 (True Crossfading)</title> <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @font-face {
         font-family: 'LucideIcons';
@@ -173,6 +172,7 @@
                 const termsToCheck = [primaryKey, ...aliases];
                 if (termsToCheck.some(term => wordsInTranscript.includes(term))) {
                     const currentKeywordDisplay = triggeredKeywordDiv.textContent.toLowerCase();
+                    // Only trigger if it's a NEW primary keyword
                     if (currentKeywordDisplay !== primaryKey) {
                         console.log(`Triggering keyword: ${primaryKey}`);
                         triggeredKeywordDiv.textContent = primaryKey.charAt(0).toUpperCase() + primaryKey.slice(1);
@@ -187,29 +187,44 @@
         // --- Stop Audio Function ---
         // Centralized function to stop audio with fade and cancel loops
         function stopCurrentSound(fadeDuration = CROSSFADE_DURATION) {
-             // Cancel any pending loop timeout
-            if (currentLoopTimeoutId) {
-                clearTimeout(currentLoopTimeoutId);
-                currentLoopTimeoutId = null;
-                console.log("Cancelled pending loop timeout.");
-            }
+             // Cancel any pending loop timeout associated with the sound being stopped
+             // Check the activeAudioSource itself for the timeout ID
+             if (activeAudioSource && activeAudioSource._loopTimeoutId) {
+                 clearTimeout(activeAudioSource._loopTimeoutId);
+                 activeAudioSource._loopTimeoutId = null; // Clear the reference on the source
+                 console.log("Cancelled pending loop timeout for the sound being stopped.");
+             }
+             // Also clear the global reference just in case
+             if (currentLoopTimeoutId) {
+                 clearTimeout(currentLoopTimeoutId);
+                 currentLoopTimeoutId = null;
+             }
+
 
             // Fade out the current sound
             if (activeAudioSource && activeGainNode) {
                 console.log("Fading out current sound...");
+                const sourceToStop = activeAudioSource; // Capture refs
+                const gainNodeToFade = activeGainNode;
                 const fadeOutEndTime = audioContext.currentTime + fadeDuration;
-                activeGainNode.gain.cancelScheduledValues(audioContext.currentTime); // Cancel any pending ramps
-                activeGainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
-                activeAudioSource.stop(fadeOutEndTime + 0.1);
+
+                gainNodeToFade.gain.cancelScheduledValues(audioContext.currentTime); // Cancel any pending ramps
+                gainNodeToFade.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
+                sourceToStop.stop(fadeOutEndTime + 0.1);
+
                  // Detach node after stopping
-                 const gainNodeToDisconnect = activeGainNode; // Capture ref
                  setTimeout(() => {
-                     try { gainNodeToDisconnect.disconnect(); } catch(e) {}
+                     try { gainNodeToFade.disconnect(); } catch(e) {}
                  }, (fadeDuration + 0.2) * 1000);
 
-                activeAudioSource = null;
-                activeGainNode = null;
-                return true; // Indicate sound was stopped
+                // Clear the *global* active references ONLY IF they haven't been replaced by a new sound already
+                if (activeAudioSource === sourceToStop) {
+                    activeAudioSource = null;
+                }
+                if (activeGainNode === gainNodeToFade) {
+                    activeGainNode = null;
+                }
+                return true; // Indicate sound was stopped/faded
             }
             return false; // Indicate nothing was stopped
         }
@@ -218,18 +233,50 @@
         // --- Audio Playback ---
 
         // Function to start the initial sound and schedule the first loop crossfade
+        // *** MODIFIED FOR TRUE CROSSFADE ***
         async function startSoundSequence(keyword) {
              if (!initializeAudio()) return;
 
              console.log(`Starting sequence for keyword: ${keyword}`);
              audioStatusDiv.textContent = `Starting ${keyword}...`;
 
-             // Stop any currently playing sound immediately (crossfade handled by playLoopSegment)
-             stopCurrentSound(CROSSFADE_DURATION); // Use standard crossfade duration
+             // --- Capture previous sound references ---
+             const previousSource = activeAudioSource;
+             const previousGainNode = activeGainNode;
 
-             // Play the first segment and schedule the loop
-             playLoopSegment(keyword, 0); // Start immediately
+             // --- Cancel any pending loop for the PREVIOUS sound ---
+             // Clear the global timeout ID first
+             if (currentLoopTimeoutId) {
+                 clearTimeout(currentLoopTimeoutId);
+                 currentLoopTimeoutId = null;
+                 console.log("Cancelled previous pending loop timeout.");
+             }
+             // Also clear the timeout ID stored on the previous source itself
+             if (previousSource && previousSource._loopTimeoutId) {
+                 clearTimeout(previousSource._loopTimeoutId);
+                 previousSource._loopTimeoutId = null;
+                 console.log("Cleared timeout ID from previous source.");
+             }
+
+             // --- Start the NEW sound sequence (this will update activeAudioSource/GainNode) ---
+             // This plays the first segment and schedules its *own* loop timeout
+             await playLoopSegment(keyword, 0); // Start immediately, includes fade-in
+
+             // --- Fade Out the PREVIOUS sound (if it existed) ---
+             if (previousSource && previousGainNode) {
+                 console.log("Fading out previous sound (crossfade)...");
+                 const fadeOutEndTime = audioContext.currentTime + CROSSFADE_DURATION;
+                 previousGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+                 // Check if gain is already fading - might not be necessary if cancelScheduledValues works reliably
+                 previousGainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
+                 previousSource.stop(fadeOutEndTime + 0.1);
+                 // Detach node after stopping
+                 setTimeout(() => {
+                     try { previousGainNode.disconnect(); } catch(e) {}
+                 }, (CROSSFADE_DURATION + 0.2) * 1000);
+             }
         }
+
 
         // Function to play one segment of the audio and schedule the next crossfade
         async function playLoopSegment(keyword, startTimeOffset = 0) {
@@ -239,7 +286,7 @@
              try {
                  // --- Get Audio Buffer ---
                  let buffer = audioBuffers[url];
-                 if (!buffer) {
+                 if (!buffer) { /* ... Fetching/Decoding unchanged ... */
                      console.log(`Fetching/Decoding for loop: ${url}`);
                      audioStatusDiv.textContent = `Loading ${keyword}...`;
                      const response = await fetch(url);
@@ -249,20 +296,37 @@
                      buffer = await audioContext.decodeAudioData(arrayBuffer);
                      audioBuffers[url] = buffer;
                      console.log(`Decoded/cached for loop: ${url}`);
-                 } else {
-                    // Using cached buffer
                  }
 
                  const duration = buffer.duration;
-                 if (!duration || duration <= 0) {
-                     throw new Error(`Invalid buffer duration for ${url}: ${duration}`);
+                 if (!duration || duration <= 0 || duration < CROSSFADE_DURATION) { // Added check for duration vs crossfade
+                     // If duration is too short for a meaningful crossfade loop, just play once without looping schedule
+                     console.warn(`Audio duration for ${keyword} (${duration.toFixed(2)}s) is too short for crossfade loop (${CROSSFADE_DURATION}s). Playing once.`);
+                     // Play without scheduling next loop or self-fade-out
+                     const source = audioContext.createBufferSource();
+                     const gainNode = audioContext.createGain();
+                     source.buffer = buffer;
+                     source.loop = false;
+                     source.connect(gainNode);
+                     gainNode.connect(audioContext.destination);
+                     gainNode.gain.setValueAtTime(MIN_GAIN, audioContext.currentTime + startTimeOffset);
+                     gainNode.gain.linearRampToValueAtTime(MAX_GAIN, audioContext.currentTime + startTimeOffset + CROSSFADE_DURATION);
+                     source.start(audioContext.currentTime + startTimeOffset);
+                     activeAudioSource = source; // Still track it so it can be faded on keyword change
+                     activeGainNode = gainNode;
+                     audioStatusDiv.textContent = `Playing ${keyword} (once).`;
+                      source.onended = () => { // Basic cleanup
+                          if (activeAudioSource === source) { activeAudioSource = null; activeGainNode = null; }
+                          try { gainNode.disconnect(); } catch(e) {}
+                      };
+                     return; // Exit without scheduling loop
                  }
 
                  // --- Create and Connect Nodes ---
                  const source = audioContext.createBufferSource();
                  const gainNode = audioContext.createGain();
                  source.buffer = buffer;
-                 source.loop = false; // *** IMPORTANT: Disable native looping ***
+                 source.loop = false; // Disable native looping
                  source.connect(gainNode);
                  gainNode.connect(audioContext.destination);
 
@@ -275,48 +339,51 @@
 
                  // Schedule fade out towards the end of this segment
                  const fadeOutStartTime = segmentStartTime + duration - CROSSFADE_DURATION;
-                 if (fadeOutStartTime > segmentStartTime + CROSSFADE_DURATION) { // Ensure fade out doesn't overlap fade in badly
-                    gainNode.gain.setValueAtTime(MAX_GAIN, fadeOutStartTime); // Hold max gain until fade out
+                 // Ensure fade out doesn't start before fade in completes
+                 if (fadeOutStartTime > segmentStartTime + CROSSFADE_DURATION) {
+                    gainNode.gain.setValueAtTime(MAX_GAIN, fadeOutStartTime); // Hold max gain
                     gainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutStartTime + CROSSFADE_DURATION);
-                 } else {
-                    // If duration is shorter than 2x crossfade, just fade out from peak of fade-in
+                 } else { // If duration is short (but > CROSSFADE_DURATION), fade out immediately after fade in peak
+                    console.warn(`Short duration for ${keyword}, adjusting fade-out.`);
                     gainNode.gain.linearRampToValueAtTime(MIN_GAIN, segmentStartTime + duration);
                  }
-
 
                  // Start this segment
                  source.start(segmentStartTime);
                  console.log(`Scheduled segment for ${keyword} to start at ${segmentStartTime.toFixed(2)}`);
                  audioStatusDiv.textContent = `Playing ${keyword}.`;
 
-                 // Update active references (important for stopping)
-                 // Note: This might overwrite if the next loop starts scheduling before the previous fade finishes,
-                 // but stopCurrentSound should handle the *actual* currently audible one.
+                 // Update active references
                  activeAudioSource = source;
                  activeGainNode = gainNode;
 
+                 // --- Schedule the NEXT loop segment using setTimeout ---
+                 const nextSegmentDelayMs = Math.max(100, (duration - CROSSFADE_DURATION) * 1000);
 
-                 // --- Schedule the NEXT loop segment ---
-                 const nextSegmentStartTimeOffset = duration - CROSSFADE_DURATION;
-                 // Ensure the delay is not negative or too small
-                 const loopDelayMs = Math.max(100, nextSegmentStartTimeOffset * 1000);
+                 console.log(`Scheduling next loop for ${keyword} in ${nextSegmentDelayMs.toFixed(0)} ms`);
 
-                 console.log(`Scheduling next loop for ${keyword} in ${loopDelayMs.toFixed(0)} ms`);
+                 // Clear any previous global timeout before setting a new one
+                 if (currentLoopTimeoutId) {
+                     clearTimeout(currentLoopTimeoutId);
+                 }
 
                  currentLoopTimeoutId = setTimeout(() => {
-                     // Check if the keyword is still the one supposed to be playing
                      const currentActiveKeyword = triggeredKeywordDiv.textContent.toLowerCase();
-                     if (currentActiveKeyword === keyword && isListening) { // Also check if still listening
+                     // Check keyword AND ensure the source hasn't been replaced by a rapid change
+                     if (currentActiveKeyword === keyword && isListening && activeAudioSource === source) {
                          console.log(`Timeout reached, playing next loop segment for ${keyword}`);
-                         playLoopSegment(keyword, 0); // Start next segment immediately (crossfade handled by gain ramps)
+                         playLoopSegment(keyword, 0); // Next segment starts now (startTimeOffset=0)
                      } else {
-                         console.log(`Loop timeout fired for ${keyword}, but keyword changed or stopped listening. Cancelling loop.`);
-                         // If the keyword changed, the new sound sequence should have already stopped this one.
-                         // If listening stopped, the stop button logic should have handled it.
-                         // No explicit stop here needed usually, but clear the timeout ID.
-                         currentLoopTimeoutId = null;
+                         console.log(`Loop timeout fired for ${keyword}, but conditions not met. Cancelling loop. (Active: ${currentActiveKeyword}, Listening: ${isListening}, Source Match: ${activeAudioSource === source})`);
+                         // Clear the global ID if this timeout is the one firing but shouldn't loop
+                         if (currentLoopTimeoutId === source._loopTimeoutId) { // Check if this is the correct timeout
+                            currentLoopTimeoutId = null;
+                         }
                      }
-                 }, loopDelayMs);
+                 }, nextSegmentDelayMs);
+
+                 // Store the timeout ID on the source node itself for cancellation via stopCurrentSound
+                 source._loopTimeoutId = currentLoopTimeoutId;
 
 
                 // Schedule source to stop slightly after its fade-out completes
@@ -324,26 +391,30 @@
 
                 // Cleanup gain node after stopping
                 const gainNodeToDisconnect = gainNode;
+                // Calculate absolute disconnect time
+                const disconnectTimeMs = (segmentStartTime + duration + 0.2 - audioContext.currentTime) * 1000;
                 setTimeout(() => {
                     try { gainNodeToDisconnect.disconnect(); } catch(e) {}
-                }, (duration + 0.2) * 1000 + startTimeOffset * 1000);
+                }, Math.max(100, disconnectTimeMs)); // Ensure positive delay
 
 
-             } catch (error) {
+             } catch (error) { // --- Error Handling ---
                  console.error(`Error in playLoopSegment for '${keyword}' (URL: ${url}):`, error);
                  errorLogDiv.textContent = `Error playing loop ${keyword}: ${error.message}.`;
                  audioStatusDiv.textContent = `Failed loop ${keyword}.`;
-                 // Clear state if loop fails
-                 stopCurrentSound(0.1); // Quick stop/clear
-                 triggeredKeywordDiv.textContent = 'None'; // Reset keyword display
+                 if (currentLoopTimeoutId) { clearTimeout(currentLoopTimeoutId); currentLoopTimeoutId = null; } // Clear timeout on error
+                 // Attempt to clear active refs if they point to the failed attempt
+                 if(activeAudioSource === source) activeAudioSource = null;
+                 if(activeGainNode === gainNode) activeGainNode = null;
+                 // Don't reset keyword display here, let user trigger new one
              }
         }
 
 
         // --- Control Button Logic ---
         controlButton.addEventListener('click', async () => {
+            // ... (Initialization and Start Listening logic unchanged) ...
             if (!recognition) { errorLogDiv.textContent = 'Speech Recognition API not available.'; return; }
-            // Initialize audio context on first click *before* checking isListening
             if (!initializeAudio()) { return; }
 
             if (!isListening) { // Start Listening
@@ -364,17 +435,18 @@
                 }
             } else { // Stop Listening
                 try { recognition.stop(); } catch (e) { console.error("Error stopping recognition:", e); }
-                isListening = false; // Set state immediately
+                isListening = false;
                 controlButton.classList.replace('bg-red-600','bg-indigo-600');
                 controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
-                statusDiv.textContent = 'Stopping...'; // This might be overwritten by onEnd quickly
+                statusDiv.textContent = 'Stopping...';
 
                  // --- Stop current sound with fade ---
-                 if(stopCurrentSound(CROSSFADE_DURATION)) { // Use standard duration
+                 // stopCurrentSound now also cancels the loop timeout
+                 if(stopCurrentSound(CROSSFADE_DURATION)) {
                      audioStatusDiv.textContent = 'Audio stopped.';
                      setTimeout(() => { audioStatusDiv.textContent = ''; }, 1500);
                  } else {
-                      audioStatusDiv.textContent = ''; // Clear status if nothing was playing
+                      audioStatusDiv.textContent = '';
                  }
                  triggeredKeywordDiv.textContent = 'None'; // Reset keyword display
             }
