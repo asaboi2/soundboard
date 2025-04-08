@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D&D Audio Trigger POC v4 (Merged)</title>
+    <title>D&D Audio Trigger POC v6 (Self-Crossfading Loops)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @font-face {
@@ -52,37 +52,19 @@
 
     <script>
         // --- Configuration ---
-        // Keywords and their aliases. Sound URL is REMOVED.
-        // Code looks for 'sounds/keyword.mp3'
-        // *** MERGED 'village' and 'city' into 'settlement' ***
         const keywords = {
-            'fight': {
-                aliases: ['battle','combat','attack','war','brawl','skirmish','strike','hit','clash','raid','assault','scuffle','duel','ambush','swing','punch','stab','slash','rage','fury','enemy','foe','threat','violence','defend','swords','weapons','warriors','conflict','draw','kill','destroy','showdown','engage']
-            },
-            'mysterious': {
-                aliases: ['strange','eerie','haunting','whispering','odd','shadowy','secrets','hidden','darkness','creeping','unknown','cloaked','veiled','foggy','silent','obscure','ghostly','surreal','unexplainable','lurking','ancient','cursed','forbidden','invisible','cryptic','unsettling']
-            },
-            'magical': {
-                aliases: ['enchanted','spell','sorcery','wizardry','arcane','sparkle','fairy','wonder','glowing','supernatural','mystic','divine','sacred','otherworldly','mythical','charmed','bewitched','rune','glyph','orb','power','aura','spellbound','portal','casting','wand','incantation','blessing']
-            },
-            'explore': {
-                aliases: ['forest','jungle','desert','swamp','tundra','mountains','cliffs','canyon','cave','dungeon','ruins','temple','shrine','volcano','lake','river','valley','coast','island','meadow','glacier','hillside','ravine','marsh','plains','woods','beach','grotto','waterfall','crevice','pass','ridge','bog','wasteland','underdark','hill','moor','grove','battlefield','bridge','road','tunnel','catacombs','crypt','cellar','lighthouse','spire','outpost','checkpoint','path']
-            },
-            'tavern': {
-                aliases: ['bar','pub','inn','alehouse','saloon','taproom','barkeep','drink','fireplace','roast','drunk','booth','stage','dice','music','warm','rowdy','laughter','bartender','hearth','mugs','ale','wine','whiskey','crowd','menu','meat','soup','bread','maid','beer','customers','noise','band','flute','violin','cheers']
-            },
-            'settlement': { // Merged keyword for village and city
-                aliases: [
-                    // Original village aliases
-                    'village', 'town','hamlet','community','farmland','barn','chickens','elders','mayor','folk','locals','harvest','homes','livestock','kids','road','path','signs','well','healer','festival','farm','goats','sheep','market','horses','cart','fence','hut','cottage','field','mill','herbs',
-                    // Original city aliases
-                    'city', 'metropolis','capital','urban','streets','buildings','palace','spires','towers','gates','guards','crowds','vendors','plaza','alleys','court','armor','cobblestone','marketplace','banners','scrolls','architecture','district','watch','cityfolk','patrol','residents','noise','commotion','gossip','bazaar','hall','dome'
-                ]
-            }
-            // REMOVED original 'village' and 'city' entries
+            'fight': { aliases: ['battle','combat','attack','war','brawl','skirmish','strike','hit','clash','raid','assault','scuffle','duel','ambush','swing','punch','stab','slash','rage','fury','enemy','foe','threat','violence','defend','swords','weapons','warriors','conflict','draw','kill','destroy','showdown','engage'] },
+            'mysterious': { aliases: ['strange','eerie','haunting','whispering','odd','shadowy','secrets','hidden','darkness','creeping','unknown','cloaked','veiled','foggy','silent','obscure','ghostly','surreal','unexplainable','lurking','ancient','cursed','forbidden','invisible','cryptic','unsettling'] },
+            'magical': { aliases: ['enchanted','spell','sorcery','wizardry','arcane','sparkle','fairy','wonder','glowing','supernatural','mystic','divine','sacred','otherworldly','mythical','charmed','bewitched','rune','glyph','orb','power','aura','spellbound','portal','casting','wand','incantation','blessing'] },
+            'explore': { aliases: ['forest','jungle','desert','swamp','tundra','mountains','cliffs','canyon','cave','dungeon','ruins','temple','shrine','volcano','lake','river','valley','coast','island','meadow','glacier','hillside','ravine','marsh','plains','woods','beach','grotto','waterfall','crevice','pass','ridge','bog','wasteland','underdark','hill','moor','grove','battlefield','bridge','road','tunnel','catacombs','crypt','cellar','lighthouse','spire','outpost','checkpoint','path'] },
+            'tavern': { aliases: ['bar','pub','inn','alehouse','saloon','taproom','barkeep','drink','fireplace','roast','drunk','booth','stage','dice','music','warm','rowdy','laughter','bartender','hearth','mugs','ale','wine','whiskey','crowd','menu','meat','soup','bread','maid','beer','customers','noise','band','flute','violin','cheers'] },
+            'settlement': { aliases: ['village', 'town','hamlet','community','farmland','barn','chickens','elders','mayor','folk','locals','harvest','homes','livestock','kids','road','path','signs','well','healer','festival','farm','goats','sheep','market','horses','cart','fence','hut','cottage','field','mill','herbs', 'city', 'metropolis','capital','urban','streets','buildings','palace','spires','towers','gates','guards','crowds','vendors','plaza','alleys','court','armor','cobblestone','marketplace','banners','scrolls','architecture','district','watch','cityfolk','patrol','residents','noise','commotion','gossip','bazaar','hall','dome'] }
         };
-        const SOUND_FILE_EXTENSION = '.mp3'; // Assumed extension
-        const SOUND_FOLDER_PATH = 'sounds/'; // Assumed relative path
+        const SOUND_FILE_EXTENSION = '.mp3';
+        const SOUND_FOLDER_PATH = 'sounds/';
+        const CROSSFADE_DURATION = 1.5; // Duration of the crossfade in seconds
+        const MIN_GAIN = 0.0001; // Target gain for fade out (close to zero)
+        const MAX_GAIN = 1.0;    // Target gain for fade in
 
         // --- DOM Elements ---
         const controlButton = document.getElementById('controlButton');
@@ -96,13 +78,16 @@
         // --- State Variables ---
         let isListening = false;
         let recognition;
-        let audioContext; // Web Audio API context
+        let audioContext;
         const audioBuffers = {}; // Cache for decoded audio data
-        let activeAudioSource = null; // To stop previous sound if needed
+        let activeAudioSource = null; // Reference to the current BufferSourceNode
+        let activeGainNode = null;    // Reference to the GainNode controlling the current source
+        let currentLoopTimeoutId = null; // Timeout ID for the self-crossfading loop
 
         // --- Web Audio API Setup ---
         function initializeAudio() {
-            if (!audioContext) {
+            // ... (Initialization logic unchanged) ...
+             if (!audioContext) {
                 try {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     console.log('Audio context initialized.');
@@ -120,21 +105,21 @@
         }
 
         // --- Web Speech API Setup ---
+        // ... (Speech Recognition setup unchanged) ...
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = false;
             recognition.lang = 'en-US';
-
-            recognition.onstart = () => { /* ... unchanged ... */
+            recognition.onstart = () => { /* ... */
                 statusDiv.textContent = 'Listening...';
                 listeningIndicator.classList.add('text-green-500', 'listening-pulse');
                 listeningIndicator.classList.remove('text-gray-500');
                 errorLogDiv.textContent = '';
                 console.log('Speech recognition started');
-            };
-            recognition.onend = () => { /* ... unchanged ... */
+             };
+            recognition.onend = () => { /* ... */
                 console.log('Speech recognition ended');
                 if (isListening) {
                     console.log('Attempting restart...');
@@ -145,8 +130,8 @@
                     listeningIndicator.classList.add('text-gray-500');
                     controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
                 }
-            };
-            recognition.onerror = (event) => { /* ... unchanged ... */
+             };
+            recognition.onerror = (event) => { /* ... */
                 console.error('Speech recognition error:', event.error);
                 let msg = `Error: ${event.error}`;
                 let shouldStop = false;
@@ -165,23 +150,25 @@
                      controlButton.classList.replace('bg-red-600','bg-indigo-600');
                      controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
                 }
-            };
-            recognition.onresult = (event) => { /* ... unchanged ... */
+             };
+            recognition.onresult = (event) => { /* ... */
                 const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
                 console.log('Recognized:', transcript);
                 recognizedTextDiv.textContent = transcript;
                 checkForKeywords(transcript);
-            };
-        } else { /* ... unchanged ... */
+             };
+        } else { /* ... */
             statusDiv.textContent = 'Speech Recognition not supported.';
             controlButton.disabled = true;
             controlButton.classList.add('opacity-50', 'cursor-not-allowed');
             errorLogDiv.textContent = 'Try Google Chrome for this feature.';
         }
 
-        // --- Keyword Logic (Checks merged 'settlement' keyword) ---
+
+        // --- Keyword Logic ---
         function checkForKeywords(text) {
-            const wordsInTranscript = text.split(/\s+/);
+            // ... (Keyword checking logic unchanged) ...
+             const wordsInTranscript = text.split(/\s+/);
             for (const [primaryKey, { aliases = [] }] of Object.entries(keywords)) {
                 const termsToCheck = [primaryKey, ...aliases];
                 if (termsToCheck.some(term => wordsInTranscript.includes(term))) {
@@ -189,73 +176,175 @@
                     if (currentKeywordDisplay !== primaryKey) {
                         console.log(`Triggering keyword: ${primaryKey}`);
                         triggeredKeywordDiv.textContent = primaryKey.charAt(0).toUpperCase() + primaryKey.slice(1);
-                        playSound(primaryKey); // Pass the primary keyword ('settlement', 'fight', etc.)
+                        // Call the function to start the first segment and schedule loops
+                        startSoundSequence(primaryKey);
                     }
                     return; // Found match, stop checking
                 }
             }
         }
 
-        // --- Audio Playback (Constructs URL from keyword) ---
-        async function playSound(keyword) {
-            if (!initializeAudio()) return;
+        // --- Stop Audio Function ---
+        // Centralized function to stop audio with fade and cancel loops
+        function stopCurrentSound(fadeDuration = CROSSFADE_DURATION) {
+             // Cancel any pending loop timeout
+            if (currentLoopTimeoutId) {
+                clearTimeout(currentLoopTimeoutId);
+                currentLoopTimeoutId = null;
+                console.log("Cancelled pending loop timeout.");
+            }
 
-            // Construct the URL based on the keyword (e.g., 'settlement' -> 'sounds/settlement.mp3')
-            const url = `${SOUND_FOLDER_PATH}${keyword}${SOUND_FILE_EXTENSION}`;
-            console.log(`Attempting to play sound for keyword '${keyword}' from URL: ${url}`);
+            // Fade out the current sound
+            if (activeAudioSource && activeGainNode) {
+                console.log("Fading out current sound...");
+                const fadeOutEndTime = audioContext.currentTime + fadeDuration;
+                activeGainNode.gain.cancelScheduledValues(audioContext.currentTime); // Cancel any pending ramps
+                activeGainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
+                activeAudioSource.stop(fadeOutEndTime + 0.1);
+                 // Detach node after stopping
+                 const gainNodeToDisconnect = activeGainNode; // Capture ref
+                 setTimeout(() => {
+                     try { gainNodeToDisconnect.disconnect(); } catch(e) {}
+                 }, (fadeDuration + 0.2) * 1000);
 
-            audioStatusDiv.textContent = `Loading ${keyword}...`;
-
-            // Stop previous sound
-            if (activeAudioSource) {
-                try { activeAudioSource.stop(); } catch (e) { /* Ignore */ }
                 activeAudioSource = null;
+                activeGainNode = null;
+                return true; // Indicate sound was stopped
             }
-
-            try {
-                let buffer = audioBuffers[url]; // Check cache
-                if (!buffer) { // Fetch and decode if not cached
-                    console.log(`Fetching and decoding: ${url}`);
-                    audioStatusDiv.textContent = `Fetching ${keyword}...`;
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for ${url}`);
-                    const arrayBuffer = await response.arrayBuffer();
-                    audioStatusDiv.textContent = `Decoding ${keyword}...`;
-                    buffer = await audioContext.decodeAudioData(arrayBuffer);
-                    audioBuffers[url] = buffer; // Cache it
-                    console.log(`Decoded and cached: ${url}`);
-                } else {
-                    console.log(`Playing from cache: ${url}`);
-                }
-
-                // Play the sound
-                const source = audioContext.createBufferSource();
-                source.buffer = buffer;
-                source.connect(audioContext.destination);
-                source.start(0);
-                activeAudioSource = source; // Store reference
-
-                source.onended = () => { // Cleanup when finished
-                    console.log(`Sound finished: ${url}`);
-                    if (activeAudioSource === source) activeAudioSource = null;
-                     if(audioStatusDiv.textContent === `Playing ${keyword}.`) {
-                         setTimeout(() => { audioStatusDiv.textContent = ''; }, 1000);
-                     }
-                };
-                audioStatusDiv.textContent = `Playing ${keyword}.`;
-
-            } catch (error) { /* ... unchanged error handling ... */
-                console.error(`Error processing sound for keyword '${keyword}' (URL: ${url}):`, error);
-                errorLogDiv.textContent = `Error playing ${keyword}: ${error.message}. Check file exists at '${url}' & CORS.`;
-                audioStatusDiv.textContent = `Failed to play ${keyword}.`;
-                 activeAudioSource = null;
-            }
+            return false; // Indicate nothing was stopped
         }
 
+
+        // --- Audio Playback ---
+
+        // Function to start the initial sound and schedule the first loop crossfade
+        async function startSoundSequence(keyword) {
+             if (!initializeAudio()) return;
+
+             console.log(`Starting sequence for keyword: ${keyword}`);
+             audioStatusDiv.textContent = `Starting ${keyword}...`;
+
+             // Stop any currently playing sound immediately (crossfade handled by playLoopSegment)
+             stopCurrentSound(CROSSFADE_DURATION); // Use standard crossfade duration
+
+             // Play the first segment and schedule the loop
+             playLoopSegment(keyword, 0); // Start immediately
+        }
+
+        // Function to play one segment of the audio and schedule the next crossfade
+        async function playLoopSegment(keyword, startTimeOffset = 0) {
+             // Construct the URL
+             const url = `${SOUND_FOLDER_PATH}${keyword}${SOUND_FILE_EXTENSION}`;
+
+             try {
+                 // --- Get Audio Buffer ---
+                 let buffer = audioBuffers[url];
+                 if (!buffer) {
+                     console.log(`Fetching/Decoding for loop: ${url}`);
+                     audioStatusDiv.textContent = `Loading ${keyword}...`;
+                     const response = await fetch(url);
+                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+                     const arrayBuffer = await response.arrayBuffer();
+                     audioStatusDiv.textContent = `Decoding ${keyword}...`;
+                     buffer = await audioContext.decodeAudioData(arrayBuffer);
+                     audioBuffers[url] = buffer;
+                     console.log(`Decoded/cached for loop: ${url}`);
+                 } else {
+                    // Using cached buffer
+                 }
+
+                 const duration = buffer.duration;
+                 if (!duration || duration <= 0) {
+                     throw new Error(`Invalid buffer duration for ${url}: ${duration}`);
+                 }
+
+                 // --- Create and Connect Nodes ---
+                 const source = audioContext.createBufferSource();
+                 const gainNode = audioContext.createGain();
+                 source.buffer = buffer;
+                 source.loop = false; // *** IMPORTANT: Disable native looping ***
+                 source.connect(gainNode);
+                 gainNode.connect(audioContext.destination);
+
+                 // --- Schedule Playback & Fades ---
+                 const segmentStartTime = audioContext.currentTime + startTimeOffset;
+
+                 // Set initial gain (fade in)
+                 gainNode.gain.setValueAtTime(MIN_GAIN, segmentStartTime);
+                 gainNode.gain.linearRampToValueAtTime(MAX_GAIN, segmentStartTime + CROSSFADE_DURATION);
+
+                 // Schedule fade out towards the end of this segment
+                 const fadeOutStartTime = segmentStartTime + duration - CROSSFADE_DURATION;
+                 if (fadeOutStartTime > segmentStartTime + CROSSFADE_DURATION) { // Ensure fade out doesn't overlap fade in badly
+                    gainNode.gain.setValueAtTime(MAX_GAIN, fadeOutStartTime); // Hold max gain until fade out
+                    gainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutStartTime + CROSSFADE_DURATION);
+                 } else {
+                    // If duration is shorter than 2x crossfade, just fade out from peak of fade-in
+                    gainNode.gain.linearRampToValueAtTime(MIN_GAIN, segmentStartTime + duration);
+                 }
+
+
+                 // Start this segment
+                 source.start(segmentStartTime);
+                 console.log(`Scheduled segment for ${keyword} to start at ${segmentStartTime.toFixed(2)}`);
+                 audioStatusDiv.textContent = `Playing ${keyword}.`;
+
+                 // Update active references (important for stopping)
+                 // Note: This might overwrite if the next loop starts scheduling before the previous fade finishes,
+                 // but stopCurrentSound should handle the *actual* currently audible one.
+                 activeAudioSource = source;
+                 activeGainNode = gainNode;
+
+
+                 // --- Schedule the NEXT loop segment ---
+                 const nextSegmentStartTimeOffset = duration - CROSSFADE_DURATION;
+                 // Ensure the delay is not negative or too small
+                 const loopDelayMs = Math.max(100, nextSegmentStartTimeOffset * 1000);
+
+                 console.log(`Scheduling next loop for ${keyword} in ${loopDelayMs.toFixed(0)} ms`);
+
+                 currentLoopTimeoutId = setTimeout(() => {
+                     // Check if the keyword is still the one supposed to be playing
+                     const currentActiveKeyword = triggeredKeywordDiv.textContent.toLowerCase();
+                     if (currentActiveKeyword === keyword && isListening) { // Also check if still listening
+                         console.log(`Timeout reached, playing next loop segment for ${keyword}`);
+                         playLoopSegment(keyword, 0); // Start next segment immediately (crossfade handled by gain ramps)
+                     } else {
+                         console.log(`Loop timeout fired for ${keyword}, but keyword changed or stopped listening. Cancelling loop.`);
+                         // If the keyword changed, the new sound sequence should have already stopped this one.
+                         // If listening stopped, the stop button logic should have handled it.
+                         // No explicit stop here needed usually, but clear the timeout ID.
+                         currentLoopTimeoutId = null;
+                     }
+                 }, loopDelayMs);
+
+
+                // Schedule source to stop slightly after its fade-out completes
+                source.stop(segmentStartTime + duration + 0.1);
+
+                // Cleanup gain node after stopping
+                const gainNodeToDisconnect = gainNode;
+                setTimeout(() => {
+                    try { gainNodeToDisconnect.disconnect(); } catch(e) {}
+                }, (duration + 0.2) * 1000 + startTimeOffset * 1000);
+
+
+             } catch (error) {
+                 console.error(`Error in playLoopSegment for '${keyword}' (URL: ${url}):`, error);
+                 errorLogDiv.textContent = `Error playing loop ${keyword}: ${error.message}.`;
+                 audioStatusDiv.textContent = `Failed loop ${keyword}.`;
+                 // Clear state if loop fails
+                 stopCurrentSound(0.1); // Quick stop/clear
+                 triggeredKeywordDiv.textContent = 'None'; // Reset keyword display
+             }
+        }
+
+
         // --- Control Button Logic ---
-        controlButton.addEventListener('click', async () => { /* ... unchanged ... */
+        controlButton.addEventListener('click', async () => {
             if (!recognition) { errorLogDiv.textContent = 'Speech Recognition API not available.'; return; }
-            if (!initializeAudio()) { return; } // Ensure audio is ready
+            // Initialize audio context on first click *before* checking isListening
+            if (!initializeAudio()) { return; }
 
             if (!isListening) { // Start Listening
                 try {
@@ -275,16 +364,19 @@
                 }
             } else { // Stop Listening
                 try { recognition.stop(); } catch (e) { console.error("Error stopping recognition:", e); }
-                isListening = false;
+                isListening = false; // Set state immediately
                 controlButton.classList.replace('bg-red-600','bg-indigo-600');
                 controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
-                statusDiv.textContent = 'Stopping...';
-                 if (activeAudioSource) { // Stop audio playback
-                     try { activeAudioSource.stop(); } catch(e) {}
-                     activeAudioSource = null;
+                statusDiv.textContent = 'Stopping...'; // This might be overwritten by onEnd quickly
+
+                 // --- Stop current sound with fade ---
+                 if(stopCurrentSound(CROSSFADE_DURATION)) { // Use standard duration
                      audioStatusDiv.textContent = 'Audio stopped.';
                      setTimeout(() => { audioStatusDiv.textContent = ''; }, 1500);
+                 } else {
+                      audioStatusDiv.textContent = ''; // Clear status if nothing was playing
                  }
+                 triggeredKeywordDiv.textContent = 'None'; // Reset keyword display
             }
         });
 
