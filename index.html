@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D&D Audio Trigger POC v4 (Merged)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @font-face {
+        font-family: 'LucideIcons';
+        src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
+      }
+      .lucide {
+        font-family: 'LucideIcons';
+        font-size: 1.25rem;
+        line-height: 1;
+        font-style: normal;
+        font-weight: normal;
+        font-variant: normal;
+        text-transform: none;
+        word-wrap: normal;
+        speak: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      .listening-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-gray-100 font-[Inter] flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-full max-w-md text-center border border-gray-700">
+        <h1 class="text-2xl font-bold mb-4 text-indigo-400">D&D Audio Trigger</h1>
+        <p class="text-gray-400 mb-6">Click "Start Listening" and try saying keywords like "fight", "mysterious", "magical", "explore", "tavern", "settlement" (or village/city aliases).</p>
+
+        <button id="controlButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out flex items-center justify-center mx-auto mb-6 shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+            <span class="lucide mr-2">&#xe3b0;</span> Start Listening
+        </button>
+
+        <div class="bg-gray-700 p-4 rounded-lg min-h-[150px] text-left shadow-inner">
+            <h2 class="text-lg font-semibold mb-2 text-gray-300 flex items-center">
+                <span id="listeningIndicator" class="lucide mr-2 text-gray-500">&#xe3b0;</span> Status: <span id="status" class="ml-1 font-normal text-gray-400">Idle</span>
+            </h2>
+            <p class="text-sm text-gray-400 mb-2">Recognized: <em id="recognizedText" class="text-gray-300">...</em></p>
+            <p class="text-sm text-gray-400">Triggered Keyword: <strong id="triggeredKeyword" class="text-indigo-400">None</strong></p>
+            <p id="errorLog" class="text-xs text-red-400 mt-2"></p>
+            <p id="audioStatus" class="text-xs text-blue-400 mt-2"></p>
+        </div>
+         <p class="text-xs text-gray-500 mt-4">Note: Uses Web Speech API (best in Chrome). May stop listening after pauses.</p>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // Keywords and their aliases. Sound URL is REMOVED.
+        // Code looks for 'sounds/keyword.mp3'
+        // *** MERGED 'village' and 'city' into 'settlement' ***
+        const keywords = {
+            'fight': {
+                aliases: ['battle','combat','attack','war','brawl','skirmish','strike','hit','clash','raid','assault','scuffle','duel','ambush','swing','punch','stab','slash','rage','fury','enemy','foe','threat','violence','defend','swords','weapons','warriors','conflict','draw','kill','destroy','showdown','engage']
+            },
+            'mysterious': {
+                aliases: ['strange','eerie','haunting','whispering','odd','shadowy','secrets','hidden','darkness','creeping','unknown','cloaked','veiled','foggy','silent','obscure','ghostly','surreal','unexplainable','lurking','ancient','cursed','forbidden','invisible','cryptic','unsettling']
+            },
+            'magical': {
+                aliases: ['enchanted','spell','sorcery','wizardry','arcane','sparkle','fairy','wonder','glowing','supernatural','mystic','divine','sacred','otherworldly','mythical','charmed','bewitched','rune','glyph','orb','power','aura','spellbound','portal','casting','wand','incantation','blessing']
+            },
+            'explore': {
+                aliases: ['forest','jungle','desert','swamp','tundra','mountains','cliffs','canyon','cave','dungeon','ruins','temple','shrine','volcano','lake','river','valley','coast','island','meadow','glacier','hillside','ravine','marsh','plains','woods','beach','grotto','waterfall','crevice','pass','ridge','bog','wasteland','underdark','hill','moor','grove','battlefield','bridge','road','tunnel','catacombs','crypt','cellar','lighthouse','spire','outpost','checkpoint','path']
+            },
+            'tavern': {
+                aliases: ['bar','pub','inn','alehouse','saloon','taproom','barkeep','drink','fireplace','roast','drunk','booth','stage','dice','music','warm','rowdy','laughter','bartender','hearth','mugs','ale','wine','whiskey','crowd','menu','meat','soup','bread','maid','beer','customers','noise','band','flute','violin','cheers']
+            },
+            'settlement': { // Merged keyword for village and city
+                aliases: [
+                    // Original village aliases
+                    'village', 'town','hamlet','community','farmland','barn','chickens','elders','mayor','folk','locals','harvest','homes','livestock','kids','road','path','signs','well','healer','festival','farm','goats','sheep','market','horses','cart','fence','hut','cottage','field','mill','herbs',
+                    // Original city aliases
+                    'city', 'metropolis','capital','urban','streets','buildings','palace','spires','towers','gates','guards','crowds','vendors','plaza','alleys','court','armor','cobblestone','marketplace','banners','scrolls','architecture','district','watch','cityfolk','patrol','residents','noise','commotion','gossip','bazaar','hall','dome'
+                ]
+            }
+            // REMOVED original 'village' and 'city' entries
+        };
+        const SOUND_FILE_EXTENSION = '.mp3'; // Assumed extension
+        const SOUND_FOLDER_PATH = 'sounds/'; // Assumed relative path
+
+        // --- DOM Elements ---
+        const controlButton = document.getElementById('controlButton');
+        const statusDiv = document.getElementById('status');
+        const recognizedTextDiv = document.getElementById('recognizedText');
+        const triggeredKeywordDiv = document.getElementById('triggeredKeyword');
+        const errorLogDiv = document.getElementById('errorLog');
+        const audioStatusDiv = document.getElementById('audioStatus');
+        const listeningIndicator = document.getElementById('listeningIndicator');
+
+        // --- State Variables ---
+        let isListening = false;
+        let recognition;
+        let audioContext; // Web Audio API context
+        const audioBuffers = {}; // Cache for decoded audio data
+        let activeAudioSource = null; // To stop previous sound if needed
+
+        // --- Web Audio API Setup ---
+        function initializeAudio() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('Audio context initialized.');
+                } catch (error) {
+                    console.error("Failed to initialize Audio Context:", error);
+                    errorLogDiv.textContent = 'Web Audio API not supported or failed.';
+                    controlButton.disabled = true;
+                    return false;
+                }
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => console.log('Audio context resumed.'));
+            }
+            return true;
+        }
+
+        // --- Web Speech API Setup ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => { /* ... unchanged ... */
+                statusDiv.textContent = 'Listening...';
+                listeningIndicator.classList.add('text-green-500', 'listening-pulse');
+                listeningIndicator.classList.remove('text-gray-500');
+                errorLogDiv.textContent = '';
+                console.log('Speech recognition started');
+            };
+            recognition.onend = () => { /* ... unchanged ... */
+                console.log('Speech recognition ended');
+                if (isListening) {
+                    console.log('Attempting restart...');
+                    setTimeout(() => { if (isListening) { try { recognition.start(); } catch(e) { console.error("Restart failed:", e); } } }, 500);
+                } else {
+                    statusDiv.textContent = 'Idle';
+                    listeningIndicator.classList.remove('text-green-500', 'listening-pulse');
+                    listeningIndicator.classList.add('text-gray-500');
+                    controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
+                }
+            };
+            recognition.onerror = (event) => { /* ... unchanged ... */
+                console.error('Speech recognition error:', event.error);
+                let msg = `Error: ${event.error}`;
+                let shouldStop = false;
+                 if (event.error === 'language-not-supported') { msg = `Error: Lang 'en-US' not supported. Try Chrome/check settings.`; shouldStop = true; }
+                 else if (event.error === 'no-speech') { msg = 'No speech detected. Listening may stop/restart.'; }
+                 else if (event.error === 'audio-capture') { msg = 'Mic error. Check permissions.'; shouldStop = true; }
+                 else if (event.error === 'not-allowed') { msg = 'Mic access denied. Please allow access.'; shouldStop = true; }
+                 else { msg = `Recognition Error: ${event.error}`; }
+                errorLogDiv.textContent = msg;
+                if (shouldStop) {
+                     isListening = false;
+                     statusDiv.textContent = 'Error';
+                     listeningIndicator.classList.remove('text-green-500', 'listening-pulse');
+                     listeningIndicator.classList.add('text-red-500');
+                     controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
+                     controlButton.classList.replace('bg-red-600','bg-indigo-600');
+                     controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
+                }
+            };
+            recognition.onresult = (event) => { /* ... unchanged ... */
+                const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+                console.log('Recognized:', transcript);
+                recognizedTextDiv.textContent = transcript;
+                checkForKeywords(transcript);
+            };
+        } else { /* ... unchanged ... */
+            statusDiv.textContent = 'Speech Recognition not supported.';
+            controlButton.disabled = true;
+            controlButton.classList.add('opacity-50', 'cursor-not-allowed');
+            errorLogDiv.textContent = 'Try Google Chrome for this feature.';
+        }
+
+        // --- Keyword Logic (Checks merged 'settlement' keyword) ---
+        function checkForKeywords(text) {
+            const wordsInTranscript = text.split(/\s+/);
+            for (const [primaryKey, { aliases = [] }] of Object.entries(keywords)) {
+                const termsToCheck = [primaryKey, ...aliases];
+                if (termsToCheck.some(term => wordsInTranscript.includes(term))) {
+                    const currentKeywordDisplay = triggeredKeywordDiv.textContent.toLowerCase();
+                    if (currentKeywordDisplay !== primaryKey) {
+                        console.log(`Triggering keyword: ${primaryKey}`);
+                        triggeredKeywordDiv.textContent = primaryKey.charAt(0).toUpperCase() + primaryKey.slice(1);
+                        playSound(primaryKey); // Pass the primary keyword ('settlement', 'fight', etc.)
+                    }
+                    return; // Found match, stop checking
+                }
+            }
+        }
+
+        // --- Audio Playback (Constructs URL from keyword) ---
+        async function playSound(keyword) {
+            if (!initializeAudio()) return;
+
+            // Construct the URL based on the keyword (e.g., 'settlement' -> 'sounds/settlement.mp3')
+            const url = `${SOUND_FOLDER_PATH}${keyword}${SOUND_FILE_EXTENSION}`;
+            console.log(`Attempting to play sound for keyword '${keyword}' from URL: ${url}`);
+
+            audioStatusDiv.textContent = `Loading ${keyword}...`;
+
+            // Stop previous sound
+            if (activeAudioSource) {
+                try { activeAudioSource.stop(); } catch (e) { /* Ignore */ }
+                activeAudioSource = null;
+            }
+
+            try {
+                let buffer = audioBuffers[url]; // Check cache
+                if (!buffer) { // Fetch and decode if not cached
+                    console.log(`Fetching and decoding: ${url}`);
+                    audioStatusDiv.textContent = `Fetching ${keyword}...`;
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    audioStatusDiv.textContent = `Decoding ${keyword}...`;
+                    buffer = await audioContext.decodeAudioData(arrayBuffer);
+                    audioBuffers[url] = buffer; // Cache it
+                    console.log(`Decoded and cached: ${url}`);
+                } else {
+                    console.log(`Playing from cache: ${url}`);
+                }
+
+                // Play the sound
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                activeAudioSource = source; // Store reference
+
+                source.onended = () => { // Cleanup when finished
+                    console.log(`Sound finished: ${url}`);
+                    if (activeAudioSource === source) activeAudioSource = null;
+                     if(audioStatusDiv.textContent === `Playing ${keyword}.`) {
+                         setTimeout(() => { audioStatusDiv.textContent = ''; }, 1000);
+                     }
+                };
+                audioStatusDiv.textContent = `Playing ${keyword}.`;
+
+            } catch (error) { /* ... unchanged error handling ... */
+                console.error(`Error processing sound for keyword '${keyword}' (URL: ${url}):`, error);
+                errorLogDiv.textContent = `Error playing ${keyword}: ${error.message}. Check file exists at '${url}' & CORS.`;
+                audioStatusDiv.textContent = `Failed to play ${keyword}.`;
+                 activeAudioSource = null;
+            }
+        }
+
+        // --- Control Button Logic ---
+        controlButton.addEventListener('click', async () => { /* ... unchanged ... */
+            if (!recognition) { errorLogDiv.textContent = 'Speech Recognition API not available.'; return; }
+            if (!initializeAudio()) { return; } // Ensure audio is ready
+
+            if (!isListening) { // Start Listening
+                try {
+                    if (navigator.permissions) { /* Permission check */
+                         const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+                         if (permissionStatus.state === 'denied') { errorLogDiv.textContent = 'Mic access denied.'; return; }
+                    }
+                    recognition.start();
+                    isListening = true;
+                    controlButton.innerHTML = '<span class="lucide mr-2">&#xe4db;</span> Stop Listening';
+                    controlButton.classList.replace('bg-indigo-600', 'bg-red-600');
+                    controlButton.classList.replace('hover:bg-indigo-700', 'hover:bg-red-700');
+                } catch (err) {
+                    console.error("Error starting recognition:", err);
+                    errorLogDiv.textContent = `Could not start listening: ${err.message}.`;
+                    isListening = false;
+                }
+            } else { // Stop Listening
+                try { recognition.stop(); } catch (e) { console.error("Error stopping recognition:", e); }
+                isListening = false;
+                controlButton.classList.replace('bg-red-600','bg-indigo-600');
+                controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
+                statusDiv.textContent = 'Stopping...';
+                 if (activeAudioSource) { // Stop audio playback
+                     try { activeAudioSource.stop(); } catch(e) {}
+                     activeAudioSource = null;
+                     audioStatusDiv.textContent = 'Audio stopped.';
+                     setTimeout(() => { audioStatusDiv.textContent = ''; }, 1500);
+                 }
+            }
+        });
+
+    </script>
+
+</body>
+</html>
