@@ -1,458 +1,277 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D&D Audio Trigger POC v6 (True Crossfading)</title> <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      @font-face {
-        font-family: 'LucideIcons';
-        src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
-      }
-      .lucide {
-        font-family: 'LucideIcons';
-        font-size: 1.25rem;
-        line-height: 1;
-        font-style: normal;
-        font-weight: normal;
-        font-variant: normal;
-        text-transform: none;
-        word-wrap: normal;
-        speak: none;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-      .listening-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-    </style>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>D&D Audio Trigger POC v6 (True Crossfading)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @font-face {
+      font-family: 'LucideIcons';
+      src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
+    }
+    .lucide {
+      font-family: 'LucideIcons';
+      font-size: 1.25rem;
+      line-height: 1;
+      font-style: normal;
+      font-weight: normal;
+      font-variant: normal;
+      text-transform: none;
+      word-wrap: normal;
+      speak: none;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .listening-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gray-900 text-gray-100 font-[Inter] flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-full max-w-md text-center border border-gray-700">
-        <h1 class="text-2xl font-bold mb-4 text-indigo-400">D&D Audio Trigger</h1>
-        <p class="text-gray-400 mb-6">Click "Start Listening" and try saying keywords like "fight", "mysterious", "magical", "explore", "tavern", "settlement" (or village/city aliases).</p>
+  <div class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-full max-w-md text-center border border-gray-700">
+    <h1 class="text-2xl font-bold mb-4 text-indigo-400">D&D Audio Trigger</h1>
+    <p class="text-gray-400 mb-6">Click "Start Listening" and try saying keywords like "fight", "mysterious", "magical", "explore", "tavern", "settlement" (or village/city aliases).</p>
 
-        <button id="controlButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out flex items-center justify-center mx-auto mb-6 shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
-            <span class="lucide mr-2">&#xe3b0;</span> Start Listening
-        </button>
+    <button id="controlButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out flex items-center justify-center mx-auto mb-6 shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+      <span class="lucide mr-2">&#xe3b0;</span> Start Listening
+    </button>
 
-        <div class="bg-gray-700 p-4 rounded-lg min-h-[150px] text-left shadow-inner">
-            <h2 class="text-lg font-semibold mb-2 text-gray-300 flex items-center">
-                <span id="listeningIndicator" class="lucide mr-2 text-gray-500">&#xe3b0;</span> Status: <span id="status" class="ml-1 font-normal text-gray-400">Idle</span>
-            </h2>
-            <p class="text-sm text-gray-400 mb-2">Recognized: <em id="recognizedText" class="text-gray-300">...</em></p>
-            <p class="text-sm text-gray-400">Triggered Keyword: <strong id="triggeredKeyword" class="text-indigo-400">None</strong></p>
-            <p id="errorLog" class="text-xs text-red-400 mt-2"></p>
-            <p id="audioStatus" class="text-xs text-blue-400 mt-2"></p>
-        </div>
-         <p class="text-xs text-gray-500 mt-4">Note: Uses Web Speech API (best in Chrome). May stop listening after pauses.</p>
+    <div class="bg-gray-700 p-4 rounded-lg min-h-[150px] text-left shadow-inner">
+      <h2 class="text-lg font-semibold mb-2 text-gray-300 flex items-center">
+        <span id="listeningIndicator" class="lucide mr-2 text-gray-500">&#xe3b0;</span> Status: <span id="status" class="ml-1 font-normal text-gray-400">Idle</span>
+      </h2>
+      <p class="text-sm text-gray-400 mb-2">Recognized: <em id="recognizedText" class="text-gray-300">...</em></p>
+      <p class="text-sm text-gray-400">Triggered Keyword: <strong id="triggeredKeyword" class="text-indigo-400">None</strong></p>
+      <p id="errorLog" class="text-xs text-red-400 mt-2"></p>
+      <p id="audioStatus" class="text-xs text-blue-400 mt-2"></p>
     </div>
 
-    <script>
-        // --- Configuration ---
-        const keywords = {
-            'fight': { aliases: ['battle','combat','attack','war','brawl','skirmish','strike','hit','clash','raid','assault','scuffle','duel','ambush','swing','punch','stab','slash','rage','fury','enemy','foe','threat','violence','defend','swords','weapons','warriors','conflict','draw','kill','destroy','showdown','engage'] },
-            'mysterious': { aliases: ['strange','eerie','haunting','whispering','odd','shadowy','secrets','hidden','darkness','creeping','unknown','cloaked','veiled','foggy','silent','obscure','ghostly','surreal','unexplainable','lurking','ancient','cursed','forbidden','invisible','cryptic','unsettling'] },
-            'magical': { aliases: ['enchanted','spell','sorcery','wizardry','arcane','sparkle','fairy','wonder','glowing','supernatural','mystic','divine','sacred','otherworldly','mythical','charmed','bewitched','rune','glyph','orb','power','aura','spellbound','portal','casting','wand','incantation','blessing'] },
-            'explore': { aliases: ['forest','jungle','desert','swamp','tundra','mountains','cliffs','canyon','cave','dungeon','ruins','temple','shrine','volcano','lake','river','valley','coast','island','meadow','glacier','hillside','ravine','marsh','plains','woods','beach','grotto','waterfall','crevice','pass','ridge','bog','wasteland','underdark','hill','moor','grove','battlefield','bridge','road','tunnel','catacombs','crypt','cellar','lighthouse','spire','outpost','checkpoint','path'] },
-            'tavern': { aliases: ['bar','pub','inn','alehouse','saloon','taproom','barkeep','drink','fireplace','roast','drunk','booth','stage','dice','music','warm','rowdy','laughter','bartender','hearth','mugs','ale','wine','whiskey','crowd','menu','meat','soup','bread','maid','beer','customers','noise','band','flute','violin','cheers'] },
-            'settlement': { aliases: ['village', 'town','hamlet','community','farmland','barn','chickens','elders','mayor','folk','locals','harvest','homes','livestock','kids','road','path','signs','well','healer','festival','farm','goats','sheep','market','horses','cart','fence','hut','cottage','field','mill','herbs', 'city', 'metropolis','capital','urban','streets','buildings','palace','spires','towers','gates','guards','crowds','vendors','plaza','alleys','court','armor','cobblestone','marketplace','banners','scrolls','architecture','district','watch','cityfolk','patrol','residents','noise','commotion','gossip','bazaar','hall','dome'] }
-        };
-        const SOUND_FILE_EXTENSION = '.mp3';
-        const SOUND_FOLDER_PATH = 'sounds/';
-        const CROSSFADE_DURATION = 1.5; // Duration of the crossfade in seconds
-        const MIN_GAIN = 0.0001; // Target gain for fade out (close to zero)
-        const MAX_GAIN = 1.0;    // Target gain for fade in
+    <p class="text-xs text-gray-500 mt-4">Note: Uses Web Speech API (best in Chrome). May stop listening after pauses.</p>
+  </div>
 
-        // --- DOM Elements ---
-        const controlButton = document.getElementById('controlButton');
-        const statusDiv = document.getElementById('status');
-        const recognizedTextDiv = document.getElementById('recognizedText');
-        const triggeredKeywordDiv = document.getElementById('triggeredKeyword');
-        const errorLogDiv = document.getElementById('errorLog');
-        const audioStatusDiv = document.getElementById('audioStatus');
-        const listeningIndicator = document.getElementById('listeningIndicator');
+  <script>
+    const keywords = {
+      'fight': { aliases: ['battle','combat','attack','war','brawl','skirmish','strike','hit','clash','raid','assault','scuffle','duel','ambush','swing','punch','stab','slash','rage','fury','enemy','foe','threat','violence','defend','swords','weapons','warriors','conflict','draw','kill','destroy','showdown','engage'] },
+      'mysterious': { aliases: ['strange','eerie','haunting','whispering','odd','shadowy','secrets','hidden','darkness','creeping','unknown','cloaked','veiled','foggy','silent','obscure','ghostly','surreal','unexplainable','lurking','ancient','cursed','forbidden','invisible','cryptic','unsettling'] },
+      'magical': { aliases: ['enchanted','spell','sorcery','wizardry','arcane','sparkle','fairy','wonder','glowing','supernatural','mystic','divine','sacred','otherworldly','mythical','charmed','bewitched','rune','glyph','orb','power','aura','spellbound','portal','casting','wand','incantation','blessing'] },
+      'explore': { aliases: ['forest','jungle','desert','swamp','tundra','mountains','cliffs','canyon','cave','dungeon','ruins','temple','shrine','volcano','lake','river','valley','coast','island','meadow','glacier','hillside','ravine','marsh','plains','woods','beach','grotto','waterfall','crevice','pass','ridge','bog','wasteland','underdark','hill','moor','grove','battlefield','bridge','road','tunnel','catacombs','crypt','cellar','lighthouse','spire','outpost','checkpoint','path'] },
+      'tavern': { aliases: ['bar','pub','inn','alehouse','saloon','taproom','barkeep','drink','fireplace','roast','drunk','booth','stage','dice','music','warm','rowdy','laughter','bartender','hearth','mugs','ale','wine','whiskey','crowd','menu','meat','soup','bread','maid','beer','customers','noise','band','flute','violin','cheers'] },
+      'settlement': { aliases: ['village', 'town','hamlet','community','farmland','barn','chickens','elders','mayor','folk','locals','harvest','homes','livestock','kids','road','path','signs','well','healer','festival','farm','goats','sheep','market','horses','cart','fence','hut','cottage','field','mill','herbs', 'city', 'metropolis','capital','urban','streets','buildings','palace','spires','towers','gates','guards','crowds','vendors','plaza','alleys','court','armor','cobblestone','marketplace','banners','scrolls','architecture','district','watch','cityfolk','patrol','residents','noise','commotion','gossip','bazaar','hall','dome'] }
+    };
 
-        // --- State Variables ---
-        let isListening = false;
-        let recognition;
-        let audioContext;
-        const audioBuffers = {}; // Cache for decoded audio data
-        let activeAudioSource = null; // Reference to the current BufferSourceNode
-        let activeGainNode = null;    // Reference to the GainNode controlling the current source
-        let currentLoopTimeoutId = null; // Timeout ID for the self-crossfading loop
+    const SOUND_FILE_EXTENSION = '.mp3';
+    const SOUND_FOLDER_PATH = 'sounds/';
+    const CROSSFADE_DURATION = 1.5;
+    const MIN_GAIN = 0.0001;
+    const MAX_GAIN = 1.0;
 
-        // --- Web Audio API Setup ---
-        function initializeAudio() {
-            // ... (Initialization logic unchanged) ...
-             if (!audioContext) {
-                try {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    console.log('Audio context initialized.');
-                } catch (error) {
-                    console.error("Failed to initialize Audio Context:", error);
-                    errorLogDiv.textContent = 'Web Audio API not supported or failed.';
-                    controlButton.disabled = true;
-                    return false;
-                }
+    const controlButton = document.getElementById('controlButton');
+    const statusDiv = document.getElementById('status');
+    const recognizedTextDiv = document.getElementById('recognizedText');
+    const triggeredKeywordDiv = document.getElementById('triggeredKeyword');
+    const errorLogDiv = document.getElementById('errorLog');
+    const audioStatusDiv = document.getElementById('audioStatus');
+    const listeningIndicator = document.getElementById('listeningIndicator');
+
+    let isListening = false;
+    let recognition;
+    let audioContext;
+    const audioBuffers = {};
+    let activeAudioSource = null;
+    let activeGainNode = null;
+    let currentLoopTimeoutId = null;
+
+    function initializeAudio() {
+      if (!audioContext) {
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (error) {
+          errorLogDiv.textContent = 'Web Audio API not supported or failed.';
+          controlButton.disabled = true;
+          return false;
+        }
+      }
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      return true;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        statusDiv.textContent = 'Listening...';
+        listeningIndicator.classList.add('text-green-500', 'listening-pulse');
+        listeningIndicator.classList.remove('text-gray-500');
+        errorLogDiv.textContent = '';
+      };
+
+      recognition.onend = () => {
+        if (isListening) {
+          setTimeout(() => {
+            if (isListening) recognition.start();
+          }, 500);
+        } else {
+          statusDiv.textContent = 'Idle';
+          listeningIndicator.classList.remove('text-green-500', 'listening-pulse');
+          listeningIndicator.classList.add('text-gray-500');
+          controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
+        }
+      };
+
+      recognition.onerror = (event) => {
+        let msg = `Error: ${event.error}`;
+        if (event.error === 'not-allowed') {
+          msg = 'Mic access denied.';
+        }
+        errorLogDiv.textContent = msg;
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+        recognizedTextDiv.textContent = transcript;
+        checkForKeywords(transcript);
+      };
+    } else {
+      statusDiv.textContent = 'Speech Recognition not supported.';
+      controlButton.disabled = true;
+      errorLogDiv.textContent = 'Try Google Chrome for this feature.';
+    }
+
+    function checkForKeywords(text) {
+      const wordsInTranscript = text.split(/\s+/);
+      for (const [primaryKey, { aliases = [] }] of Object.entries(keywords)) {
+        const termsToCheck = [primaryKey, ...aliases];
+        if (termsToCheck.some(term => wordsInTranscript.includes(term))) {
+          const currentKeywordDisplay = triggeredKeywordDiv.textContent.toLowerCase();
+          if (currentKeywordDisplay !== primaryKey) {
+            triggeredKeywordDiv.textContent = primaryKey.charAt(0).toUpperCase() + primaryKey.slice(1);
+            startSoundSequence(primaryKey);
+          }
+          return;
+        }
+      }
+    }
+
+    async function startSoundSequence(keyword) {
+      if (!initializeAudio()) return;
+
+      const previousSource = activeAudioSource;
+      const previousGainNode = activeGainNode;
+      if (currentLoopTimeoutId) {
+        clearTimeout(currentLoopTimeoutId);
+        currentLoopTimeoutId = null;
+      }
+      if (previousSource && previousSource._loopTimeoutId) {
+        clearTimeout(previousSource._loopTimeoutId);
+        previousSource._loopTimeoutId = null;
+      }
+
+      await playLoopSegment(keyword, 0);
+
+      if (previousSource && previousGainNode) {
+        const fadeOutEndTime = audioContext.currentTime + CROSSFADE_DURATION;
+        previousGainNode.gain.cancelScheduledValues(audioContext.currentTime);
+        previousGainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
+        previousSource.stop(fadeOutEndTime + 0.1);
+        setTimeout(() => {
+          try { previousGainNode.disconnect(); } catch(e) {}
+        }, (CROSSFADE_DURATION + 0.2) * 1000);
+      }
+    }
+
+    async function playLoopSegment(keyword, startTimeOffset = 0) {
+      const url = `${SOUND_FOLDER_PATH}${keyword}${SOUND_FILE_EXTENSION}`;
+      try {
+        let buffer = audioBuffers[url];
+        if (!buffer) {
+          const response = await fetch(url);
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = await audioContext.decodeAudioData(arrayBuffer);
+          audioBuffers[url] = buffer;
+        }
+
+        const source = audioContext.createBufferSource();
+        const gainNode = audioContext.createGain();
+        source.buffer = buffer;
+        source.loop = false;
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        const segmentStartTime = audioContext.currentTime + startTimeOffset;
+        gainNode.gain.setValueAtTime(MIN_GAIN, segmentStartTime);
+        gainNode.gain.linearRampToValueAtTime(MAX_GAIN, segmentStartTime + CROSSFADE_DURATION);
+
+        const fadeOutStartTime = segmentStartTime + buffer.duration - CROSSFADE_DURATION;
+        gainNode.gain.setValueAtTime(MAX_GAIN, fadeOutStartTime);
+        gainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutStartTime + CROSSFADE_DURATION);
+
+        source.start(segmentStartTime);
+        activeAudioSource = source;
+        activeGainNode = gainNode;
+
+        const nextSegmentDelayMs = Math.max(100, (buffer.duration - CROSSFADE_DURATION) * 1000);
+        currentLoopTimeoutId = setTimeout(() => {
+          const currentActiveKeyword = triggeredKeywordDiv.textContent.toLowerCase();
+          if (currentActiveKeyword === keyword && isListening && activeAudioSource === source) {
+            playLoopSegment(keyword, 0);
+          }
+        }, nextSegmentDelayMs);
+        source._loopTimeoutId = currentLoopTimeoutId;
+
+        source.stop(segmentStartTime + buffer.duration + 0.1);
+        setTimeout(() => {
+          try { gainNode.disconnect(); } catch(e) {}
+        }, (buffer.duration + 0.2) * 1000);
+      } catch (error) {
+        errorLogDiv.textContent = `Error playing loop ${keyword}: ${error.message}.`;
+      }
+    }
+
+    controlButton.addEventListener('click', async () => {
+      if (!recognition) {
+        errorLogDiv.textContent = 'Speech Recognition API not available.';
+        return;
+      }
+      if (!initializeAudio()) return;
+
+      if (!isListening) {
+        try {
+          if (navigator.permissions) {
+            const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+            if (permissionStatus.state === 'denied') {
+              errorLogDiv.textContent = 'Mic access denied.';
+              return;
             }
-            if (audioContext.state === 'suspended') {
-                audioContext.resume().then(() => console.log('Audio context resumed.'));
-            }
-            return true;
+          }
+          recognition.start();
+          isListening = true;
+          controlButton.innerHTML = '<span class="lucide mr-2">&#xe4db;</span> Stop Listening';
+          controlButton.classList.replace('bg-indigo-600', 'bg-red-600');
+          controlButton.classList.replace('hover:bg-indigo-700', 'hover:bg-red-700');
+        } catch (err) {
+          errorLogDiv.textContent = `Could not start listening: ${err.message}.`;
+          isListening = false;
         }
-
-        // --- Web Speech API Setup ---
-        // ... (Speech Recognition setup unchanged) ...
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = 'en-US';
-            recognition.onstart = () => { /* ... */
-                statusDiv.textContent = 'Listening...';
-                listeningIndicator.classList.add('text-green-500', 'listening-pulse');
-                listeningIndicator.classList.remove('text-gray-500');
-                errorLogDiv.textContent = '';
-                console.log('Speech recognition started');
-             };
-            recognition.onend = () => { /* ... */
-                console.log('Speech recognition ended');
-                if (isListening) {
-                    console.log('Attempting restart...');
-                    setTimeout(() => { if (isListening) { try { recognition.start(); } catch(e) { console.error("Restart failed:", e); } } }, 500);
-                } else {
-                    statusDiv.textContent = 'Idle';
-                    listeningIndicator.classList.remove('text-green-500', 'listening-pulse');
-                    listeningIndicator.classList.add('text-gray-500');
-                    controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
-                }
-             };
-            recognition.onerror = (event) => { /* ... */
-                console.error('Speech recognition error:', event.error);
-                let msg = `Error: ${event.error}`;
-                let shouldStop = false;
-                 if (event.error === 'language-not-supported') { msg = `Error: Lang 'en-US' not supported. Try Chrome/check settings.`; shouldStop = true; }
-                 else if (event.error === 'no-speech') { msg = 'No speech detected. Listening may stop/restart.'; }
-                 else if (event.error === 'audio-capture') { msg = 'Mic error. Check permissions.'; shouldStop = true; }
-                 else if (event.error === 'not-allowed') { msg = 'Mic access denied. Please allow access.'; shouldStop = true; }
-                 else { msg = `Recognition Error: ${event.error}`; }
-                errorLogDiv.textContent = msg;
-                if (shouldStop) {
-                     isListening = false;
-                     statusDiv.textContent = 'Error';
-                     listeningIndicator.classList.remove('text-green-500', 'listening-pulse');
-                     listeningIndicator.classList.add('text-red-500');
-                     controlButton.innerHTML = '<span class="lucide mr-2">&#xe3b0;</span> Start Listening';
-                     controlButton.classList.replace('bg-red-600','bg-indigo-600');
-                     controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
-                }
-             };
-            recognition.onresult = (event) => { /* ... */
-                const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-                console.log('Recognized:', transcript);
-                recognizedTextDiv.textContent = transcript;
-                checkForKeywords(transcript);
-             };
-        } else { /* ... */
-            statusDiv.textContent = 'Speech Recognition not supported.';
-            controlButton.disabled = true;
-            controlButton.classList.add('opacity-50', 'cursor-not-allowed');
-            errorLogDiv.textContent = 'Try Google Chrome for this feature.';
+      } else {
+        try {
+          recognition.stop();
+        } catch (e) {
+          console.error("Error stopping recognition:", e);
         }
-
-
-        // --- Keyword Logic ---
-        function checkForKeywords(text) {
-            // ... (Keyword checking logic unchanged) ...
-             const wordsInTranscript = text.split(/\s+/);
-            for (const [primaryKey, { aliases = [] }] of Object.entries(keywords)) {
-                const termsToCheck = [primaryKey, ...aliases];
-                if (termsToCheck.some(term => wordsInTranscript.includes(term))) {
-                    const currentKeywordDisplay = triggeredKeywordDiv.textContent.toLowerCase();
-                    // Only trigger if it's a NEW primary keyword
-                    if (currentKeywordDisplay !== primaryKey) {
-                        console.log(`Triggering keyword: ${primaryKey}`);
-                        triggeredKeywordDiv.textContent = primaryKey.charAt(0).toUpperCase() + primaryKey.slice(1);
-                        // Call the function to start the first segment and schedule loops
-                        startSoundSequence(primaryKey);
-                    }
-                    return; // Found match, stop checking
-                }
-            }
-        }
-
-        // --- Stop Audio Function ---
-        // Centralized function to stop audio with fade and cancel loops
-        function stopCurrentSound(fadeDuration = CROSSFADE_DURATION) {
-             // Cancel any pending loop timeout associated with the sound being stopped
-             // Check the activeAudioSource itself for the timeout ID
-             if (activeAudioSource && activeAudioSource._loopTimeoutId) {
-                 clearTimeout(activeAudioSource._loopTimeoutId);
-                 activeAudioSource._loopTimeoutId = null; // Clear the reference on the source
-                 console.log("Cancelled pending loop timeout for the sound being stopped.");
-             }
-             // Also clear the global reference just in case
-             if (currentLoopTimeoutId) {
-                 clearTimeout(currentLoopTimeoutId);
-                 currentLoopTimeoutId = null;
-             }
-
-
-            // Fade out the current sound
-            if (activeAudioSource && activeGainNode) {
-                console.log("Fading out current sound...");
-                const sourceToStop = activeAudioSource; // Capture refs
-                const gainNodeToFade = activeGainNode;
-                const fadeOutEndTime = audioContext.currentTime + fadeDuration;
-
-                gainNodeToFade.gain.cancelScheduledValues(audioContext.currentTime); // Cancel any pending ramps
-                gainNodeToFade.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
-                sourceToStop.stop(fadeOutEndTime + 0.1);
-
-                 // Detach node after stopping
-                 setTimeout(() => {
-                     try { gainNodeToFade.disconnect(); } catch(e) {}
-                 }, (fadeDuration + 0.2) * 1000);
-
-                // Clear the *global* active references ONLY IF they haven't been replaced by a new sound already
-                if (activeAudioSource === sourceToStop) {
-                    activeAudioSource = null;
-                }
-                if (activeGainNode === gainNodeToFade) {
-                    activeGainNode = null;
-                }
-                return true; // Indicate sound was stopped/faded
-            }
-            return false; // Indicate nothing was stopped
-        }
-
-
-        // --- Audio Playback ---
-
-        // Function to start the initial sound and schedule the first loop crossfade
-        // *** MODIFIED FOR TRUE CROSSFADE ***
-        async function startSoundSequence(keyword) {
-             if (!initializeAudio()) return;
-
-             console.log(`Starting sequence for keyword: ${keyword}`);
-             audioStatusDiv.textContent = `Starting ${keyword}...`;
-
-             // --- Capture previous sound references ---
-             const previousSource = activeAudioSource;
-             const previousGainNode = activeGainNode;
-
-             // --- Cancel any pending loop for the PREVIOUS sound ---
-             // Clear the global timeout ID first
-             if (currentLoopTimeoutId) {
-                 clearTimeout(currentLoopTimeoutId);
-                 currentLoopTimeoutId = null;
-                 console.log("Cancelled previous pending loop timeout.");
-             }
-             // Also clear the timeout ID stored on the previous source itself
-             if (previousSource && previousSource._loopTimeoutId) {
-                 clearTimeout(previousSource._loopTimeoutId);
-                 previousSource._loopTimeoutId = null;
-                 console.log("Cleared timeout ID from previous source.");
-             }
-
-             // --- Start the NEW sound sequence (this will update activeAudioSource/GainNode) ---
-             // This plays the first segment and schedules its *own* loop timeout
-             await playLoopSegment(keyword, 0); // Start immediately, includes fade-in
-
-             // --- Fade Out the PREVIOUS sound (if it existed) ---
-             if (previousSource && previousGainNode) {
-                 console.log("Fading out previous sound (crossfade)...");
-                 const fadeOutEndTime = audioContext.currentTime + CROSSFADE_DURATION;
-                 previousGainNode.gain.cancelScheduledValues(audioContext.currentTime);
-                 // Check if gain is already fading - might not be necessary if cancelScheduledValues works reliably
-                 previousGainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutEndTime);
-                 previousSource.stop(fadeOutEndTime + 0.1);
-                 // Detach node after stopping
-                 setTimeout(() => {
-                     try { previousGainNode.disconnect(); } catch(e) {}
-                 }, (CROSSFADE_DURATION + 0.2) * 1000);
-             }
-        }
-
-
-        // Function to play one segment of the audio and schedule the next crossfade
-        async function playLoopSegment(keyword, startTimeOffset = 0) {
-             // Construct the URL
-             const url = `${SOUND_FOLDER_PATH}${keyword}${SOUND_FILE_EXTENSION}`;
-
-             try {
-                 // --- Get Audio Buffer ---
-                 let buffer = audioBuffers[url];
-                 if (!buffer) { /* ... Fetching/Decoding unchanged ... */
-                     console.log(`Fetching/Decoding for loop: ${url}`);
-                     audioStatusDiv.textContent = `Loading ${keyword}...`;
-                     const response = await fetch(url);
-                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for ${url}`);
-                     const arrayBuffer = await response.arrayBuffer();
-                     audioStatusDiv.textContent = `Decoding ${keyword}...`;
-                     buffer = await audioContext.decodeAudioData(arrayBuffer);
-                     audioBuffers[url] = buffer;
-                     console.log(`Decoded/cached for loop: ${url}`);
-                 }
-
-                 const duration = buffer.duration;
-                 if (!duration || duration <= 0 || duration < CROSSFADE_DURATION) { // Added check for duration vs crossfade
-                     // If duration is too short for a meaningful crossfade loop, just play once without looping schedule
-                     console.warn(`Audio duration for ${keyword} (${duration.toFixed(2)}s) is too short for crossfade loop (${CROSSFADE_DURATION}s). Playing once.`);
-                     // Play without scheduling next loop or self-fade-out
-                     const source = audioContext.createBufferSource();
-                     const gainNode = audioContext.createGain();
-                     source.buffer = buffer;
-                     source.loop = false;
-                     source.connect(gainNode);
-                     gainNode.connect(audioContext.destination);
-                     gainNode.gain.setValueAtTime(MIN_GAIN, audioContext.currentTime + startTimeOffset);
-                     gainNode.gain.linearRampToValueAtTime(MAX_GAIN, audioContext.currentTime + startTimeOffset + CROSSFADE_DURATION);
-                     source.start(audioContext.currentTime + startTimeOffset);
-                     activeAudioSource = source; // Still track it so it can be faded on keyword change
-                     activeGainNode = gainNode;
-                     audioStatusDiv.textContent = `Playing ${keyword} (once).`;
-                      source.onended = () => { // Basic cleanup
-                          if (activeAudioSource === source) { activeAudioSource = null; activeGainNode = null; }
-                          try { gainNode.disconnect(); } catch(e) {}
-                      };
-                     return; // Exit without scheduling loop
-                 }
-
-                 // --- Create and Connect Nodes ---
-                 const source = audioContext.createBufferSource();
-                 const gainNode = audioContext.createGain();
-                 source.buffer = buffer;
-                 source.loop = false; // Disable native looping
-                 source.connect(gainNode);
-                 gainNode.connect(audioContext.destination);
-
-                 // --- Schedule Playback & Fades ---
-                 const segmentStartTime = audioContext.currentTime + startTimeOffset;
-
-                 // Set initial gain (fade in)
-                 gainNode.gain.setValueAtTime(MIN_GAIN, segmentStartTime);
-                 gainNode.gain.linearRampToValueAtTime(MAX_GAIN, segmentStartTime + CROSSFADE_DURATION);
-
-                 // Schedule fade out towards the end of this segment
-                 const fadeOutStartTime = segmentStartTime + duration - CROSSFADE_DURATION;
-                 // Ensure fade out doesn't start before fade in completes
-                 if (fadeOutStartTime > segmentStartTime + CROSSFADE_DURATION) {
-                    gainNode.gain.setValueAtTime(MAX_GAIN, fadeOutStartTime); // Hold max gain
-                    gainNode.gain.linearRampToValueAtTime(MIN_GAIN, fadeOutStartTime + CROSSFADE_DURATION);
-                 } else { // If duration is short (but > CROSSFADE_DURATION), fade out immediately after fade in peak
-                    console.warn(`Short duration for ${keyword}, adjusting fade-out.`);
-                    gainNode.gain.linearRampToValueAtTime(MIN_GAIN, segmentStartTime + duration);
-                 }
-
-                 // Start this segment
-                 source.start(segmentStartTime);
-                 console.log(`Scheduled segment for ${keyword} to start at ${segmentStartTime.toFixed(2)}`);
-                 audioStatusDiv.textContent = `Playing ${keyword}.`;
-
-                 // Update active references
-                 activeAudioSource = source;
-                 activeGainNode = gainNode;
-
-                 // --- Schedule the NEXT loop segment using setTimeout ---
-                 const nextSegmentDelayMs = Math.max(100, (duration - CROSSFADE_DURATION) * 1000);
-
-                 console.log(`Scheduling next loop for ${keyword} in ${nextSegmentDelayMs.toFixed(0)} ms`);
-
-                 // Clear any previous global timeout before setting a new one
-                 if (currentLoopTimeoutId) {
-                     clearTimeout(currentLoopTimeoutId);
-                 }
-
-                 currentLoopTimeoutId = setTimeout(() => {
-                     const currentActiveKeyword = triggeredKeywordDiv.textContent.toLowerCase();
-                     // Check keyword AND ensure the source hasn't been replaced by a rapid change
-                     if (currentActiveKeyword === keyword && isListening && activeAudioSource === source) {
-                         console.log(`Timeout reached, playing next loop segment for ${keyword}`);
-                         playLoopSegment(keyword, 0); // Next segment starts now (startTimeOffset=0)
-                     } else {
-                         console.log(`Loop timeout fired for ${keyword}, but conditions not met. Cancelling loop. (Active: ${currentActiveKeyword}, Listening: ${isListening}, Source Match: ${activeAudioSource === source})`);
-                         // Clear the global ID if this timeout is the one firing but shouldn't loop
-                         if (currentLoopTimeoutId === source._loopTimeoutId) { // Check if this is the correct timeout
-                            currentLoopTimeoutId = null;
-                         }
-                     }
-                 }, nextSegmentDelayMs);
-
-                 // Store the timeout ID on the source node itself for cancellation via stopCurrentSound
-                 source._loopTimeoutId = currentLoopTimeoutId;
-
-
-                // Schedule source to stop slightly after its fade-out completes
-                source.stop(segmentStartTime + duration + 0.1);
-
-                // Cleanup gain node after stopping
-                const gainNodeToDisconnect = gainNode;
-                // Calculate absolute disconnect time
-                const disconnectTimeMs = (segmentStartTime + duration + 0.2 - audioContext.currentTime) * 1000;
-                setTimeout(() => {
-                    try { gainNodeToDisconnect.disconnect(); } catch(e) {}
-                }, Math.max(100, disconnectTimeMs)); // Ensure positive delay
-
-
-             } catch (error) { // --- Error Handling ---
-                 console.error(`Error in playLoopSegment for '${keyword}' (URL: ${url}):`, error);
-                 errorLogDiv.textContent = `Error playing loop ${keyword}: ${error.message}.`;
-                 audioStatusDiv.textContent = `Failed loop ${keyword}.`;
-                 if (currentLoopTimeoutId) { clearTimeout(currentLoopTimeoutId); currentLoopTimeoutId = null; } // Clear timeout on error
-                 // Attempt to clear active refs if they point to the failed attempt
-                 if(activeAudioSource === source) activeAudioSource = null;
-                 if(activeGainNode === gainNode) activeGainNode = null;
-                 // Don't reset keyword display here, let user trigger new one
-             }
-        }
-
-
-        // --- Control Button Logic ---
-        controlButton.addEventListener('click', async () => {
-            // ... (Initialization and Start Listening logic unchanged) ...
-            if (!recognition) { errorLogDiv.textContent = 'Speech Recognition API not available.'; return; }
-            if (!initializeAudio()) { return; }
-
-            if (!isListening) { // Start Listening
-                try {
-                    if (navigator.permissions) { /* Permission check */
-                         const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
-                         if (permissionStatus.state === 'denied') { errorLogDiv.textContent = 'Mic access denied.'; return; }
-                    }
-                    recognition.start();
-                    isListening = true;
-                    controlButton.innerHTML = '<span class="lucide mr-2">&#xe4db;</span> Stop Listening';
-                    controlButton.classList.replace('bg-indigo-600', 'bg-red-600');
-                    controlButton.classList.replace('hover:bg-indigo-700', 'hover:bg-red-700');
-                } catch (err) {
-                    console.error("Error starting recognition:", err);
-                    errorLogDiv.textContent = `Could not start listening: ${err.message}.`;
-                    isListening = false;
-                }
-            } else { // Stop Listening
-                try { recognition.stop(); } catch (e) { console.error("Error stopping recognition:", e); }
-                isListening = false;
-                controlButton.classList.replace('bg-red-600','bg-indigo-600');
-                controlButton.classList.replace('hover:bg-red-700','hover:bg-indigo-700');
-                statusDiv.textContent = 'Stopping...';
-
-                 // --- Stop current sound with fade ---
-                 // stopCurrentSound now also cancels the loop timeout
-                 if(stopCurrentSound(CROSSFADE_DURATION)) {
-                     audioStatusDiv.textContent = 'Audio stopped.';
-                     setTimeout(() => { audioStatusDiv.textContent = ''; }, 1500);
-                 } else {
-                      audioStatusDiv.textContent = '';
-                 }
-                 triggeredKeywordDiv.textContent = 'None'; // Reset keyword display
-            }
-        });
-
-    </script>
-
+        isListening = false;
+        controlButton.classList.replace('bg-red-600', 'bg-indigo-600');
+        controlButton.classList.replace('hover:bg-red-700', 'hover:bg-indigo-700');
+        statusDiv.textContent = 'Idle';
+      }
+    });
+  </script>
 </body>
 </html>
